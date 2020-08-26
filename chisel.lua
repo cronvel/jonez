@@ -5,6 +5,7 @@ chisel.chiselable = {}
 chisel.group_style_index = {}
 chisel.group_style_nodes = {}
 chisel.player_copied_style = {}
+chisel.player_copied_node_name = {}
 
 
 
@@ -31,7 +32,7 @@ end
 
 
 
-local function chisel_interact(player, pointed_thing, is_right_click)
+local function chisel_interact(player, pointed_thing, mode)
 	if pointed_thing.type ~= "node" then return end
 
 	local pos = pointed_thing.under
@@ -51,20 +52,22 @@ local function chisel_interact(player, pointed_thing, is_right_click)
 	-- Retrieve group info and styles
 	local node = minetest.get_node(pos)
 	local node_name = node.name
+	local style , group_name , group , new_style , new_node_name
 
-	if not chisel.chiselable[ node_name ] then
-		minetest.chat_send_player(player_name, "Not chiselable")
-		return
+	if mode ~= "transmute" then
+		if not chisel.chiselable[ node_name ] then
+			minetest.chat_send_player(player_name, "Not chiselable")
+			return
+		end
+		
+		group_name = chisel.chiselable[ node_name ].group_name
+		style = chisel.chiselable[ node_name ].style
+		group = chisel.group_style_nodes[ group_name ]
 	end
-	
-	local group_name = chisel.chiselable[ node_name ].group_name
-	local style = chisel.chiselable[ node_name ].style
-	local group = chisel.group_style_nodes[ group_name ]
-	local new_style , new_node_name
-	
+
 
 	-- Now branch on the four user-input cases
-	if is_right_click then
+	if mode == "copy" then
 		if is_sneak then
 			-- Copy style
 			chisel.player_copied_style[ player_name ] = style
@@ -87,7 +90,7 @@ local function chisel_interact(player, pointed_thing, is_right_click)
 				return
 			end
 		end
-	else
+	elseif mode == "cycle" then
 		if is_sneak then
 			-- Backward cycle mode
 			for k,v in pairs(group) do
@@ -109,6 +112,28 @@ local function chisel_interact(player, pointed_thing, is_right_click)
 			if new_node_name == nil then
 				new_style , new_node_name = next(group)
 			end
+		end
+	elseif mode == "transmute" then
+		if is_sneak then
+			-- Copy node
+			chisel.player_copied_node_name[ player_name ] = node_name
+			minetest.chat_send_player(player_name, "Magic chisel style " .. node_name .. " copied")
+			return
+		else
+			-- Paste node
+			if not minetest.get_player_privs(player_name).creative then
+				minetest.chat_send_player(player_name, "The magic chisel require the 'creative' privilege")
+				return
+			end
+			
+			new_node_name = chisel.player_copied_node_name[ player_name ]
+			if not new_node_name then
+				minetest.chat_send_player(player_name, "No magic chisel node copied yet, use sneak + right-click to copy a style")
+				return
+			end
+			
+			-- Already the correct node, exit now!
+			if new_node_name == node_name then return end
 		end
 	end
 	
@@ -149,11 +174,11 @@ minetest.register_craftitem("jonez:chisel", {
 	inventory_image = "jonez_chisel.png",
 	wield_image = "jonez_chisel.png^[transformR180",
 	on_use = function(itemstack, player, pointed_thing)
-		chisel_interact(player, pointed_thing, false)
+		chisel_interact(player, pointed_thing, "cycle")
 		return itemstack
 	end,
 	on_place = function(itemstack, player, pointed_thing)
-		chisel_interact(player, pointed_thing, true)
+		chisel_interact(player, pointed_thing, "copy")
 		return itemstack
 	end,
 })
@@ -168,5 +193,18 @@ minetest.register_craft({
 		{"", "default:steel_ingot", ""},
 		{"default:stick", "", ""},
 	}
+})
+
+
+
+--The magic creative chisel
+minetest.register_craftitem("jonez:magic_chisel", {
+	description = S("Magic chisel for creative mode"),
+	inventory_image = "jonez_magic_chisel.png",
+	wield_image = "jonez_magic_chisel.png^[transformR180",
+	on_place = function(itemstack, player, pointed_thing)
+		chisel_interact(player, pointed_thing, "transmute")
+		return itemstack
+	end,
 })
 
